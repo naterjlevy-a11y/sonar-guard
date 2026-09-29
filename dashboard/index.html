@@ -1,0 +1,1059 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sonar Guard</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Crect width=%2216%22 height=%2216%22 fill=%22%23020a05%22/%3E%3Cpath d=%22M2 13a6 6 0 0 1 12 0%22 fill=%22none%22 stroke=%22%2300ff6e%22 stroke-width=%221.5%22/%3E%3Ccircle cx=%228%22 cy=%2213%22 r=%221.5%22 fill=%22%2300ff6e%22/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#020a05; --panel:#04130a; --line:#0c3a1e; --green:#00ff6e; --mid:#00a64a;
+  --dim:#0b4a24; --red:#ff3b3b; --amber:#ffb800; --grey:#8a968e; --text:#dcffe8;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:Consolas,"Cascadia Mono",Menlo,monospace}
+header{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5}
+h1{font-size:18px;margin:0 10px 0 0;color:var(--green);letter-spacing:3px}
+#conn{font-size:12px;color:var(--grey);margin-right:auto}
+#about{font-size:12px;color:var(--grey)} #about:hover{color:var(--green)}
+#conn.on{color:var(--green)} #conn.demo{color:var(--amber)}
+button,select{background:transparent;color:var(--green);border:1px solid var(--dim);padding:6px 11px;font:inherit;font-size:13px;cursor:pointer;border-radius:4px}
+button:hover{border-color:var(--green);background:#062a16}
+button.primary{background:var(--green);color:#01140a;border-color:var(--green);font-weight:bold}
+button.off{color:var(--grey)}
+button:disabled{opacity:.35;cursor:not-allowed}
+select option{background:#020a05}
+main{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:14px;padding:14px 16px;max-width:1500px;margin:0 auto}
+@media(max-width:960px){main{grid-template-columns:1fr}}
+.col{display:flex;flex-direction:column;gap:14px;min-width:0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:12px 14px;min-width:0}
+.card h2{margin:0 0 8px;font-size:11px;font-weight:normal;letter-spacing:2px;color:var(--mid);border-bottom:1px solid var(--line);padding-bottom:6px}
+canvas{display:block;width:100%}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:700px){.row2{grid-template-columns:1fr}}
+#state{font-size:30px;font-weight:bold;letter-spacing:2px;color:var(--grey)}
+#state.armed{color:var(--green)} #state.warn{color:var(--amber)} #state.alert{color:var(--red)}
+#state.alarm{color:var(--red);animation:blink .5s steps(1) infinite}
+@keyframes blink{50%{color:#fff}}
+.dots{display:flex;gap:10px;margin:10px 0 12px}
+.dot{width:18px;height:18px;border-radius:50%;border:2px solid var(--dim)}
+.dot.on{background:var(--green);border-color:var(--green)}
+.alertmode .dot.on{background:var(--red);border-color:var(--red)}
+.keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.keypad button{padding:10px 0;font-size:16px}
+.kv{display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:3px 0;color:var(--grey)}
+.kv b{color:var(--text);font-weight:normal;text-align:right}
+#target .kv b{color:var(--red)}
+#log{list-style:none;margin:0;padding:0;font-size:12px;max-height:230px;overflow:auto}
+#log li{padding:3px 0;border-bottom:1px solid #07210f}
+#log li.bad{color:var(--red)} #log li.good{color:var(--green)} #log li.warn{color:var(--amber)}
+#feed{margin:0;height:180px;overflow:auto;font-size:11.5px;color:#7fdca5;white-space:pre}
+.feedhead{display:flex;gap:8px;align-items:flex-start}
+.feedhead h2{flex:1}
+.feedhead button{padding:2px 8px;font-size:11px}
+.hint{font-size:12px;color:var(--grey);margin-top:8px;line-height:1.5}
+#modal{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;z-index:10;padding:16px}
+#modal.show{display:flex}
+#modal .card{width:min(460px,100%);border-color:var(--green)}
+#modal h3{margin:0 0 14px;text-align:center;color:var(--green);letter-spacing:3px}
+#modal .kv{font-size:15px;padding:6px 0}
+.btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;justify-content:center}
+#nosupport{display:none;background:#2a1a00;color:var(--amber);padding:8px 16px;font-size:13px}
+</style>
+</head>
+<body>
+<div id="nosupport">This browser can't talk to USB devices. Open this page in Chrome or Edge to connect the Arduino. Demo mode works anywhere.</div>
+<header>
+  <h1>SONAR GUARD</h1>
+  <a id="about" href="https://natelevy.tech/work/sonar-guard">about this project</a>
+  <span id="conn">offline</span>
+  <button id="btnConnect" class="primary">Connect Arduino</button>
+  <button id="btnDemo">Demo mode</button>
+  <button id="btnArm">Arm</button>
+  <select id="range" title="Radar range">
+    <option value="200">200 cm</option>
+    <option value="300" selected>300 cm</option>
+    <option value="400">400 cm</option>
+  </select>
+  <button id="btnMirror" class="off">Mirror: off</button>
+  <button id="btnVoice">Voice: on</button>
+  <button id="btnSound">Sound: on</button>
+  <button id="btnShot">Screenshot</button>
+  <button id="btnCsv">Export CSV</button>
+</header>
+
+<main>
+  <div class="col">
+    <div class="card"><canvas id="radar"></canvas></div>
+    <div class="row2">
+      <div class="card"><h2>RANGE PROFILE · DISTANCE VS ANGLE</h2><canvas id="profile"></canvas></div>
+      <div class="card">
+        <div class="feedhead"><h2>LIVE DATA FEED</h2><button id="btnPause">pause</button></div>
+        <pre id="feed"></pre>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card" id="statusCard">
+      <h2>STATUS</h2>
+      <div id="state">OFFLINE</div>
+      <div class="dots" id="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+      <div class="keypad" id="keypad"></div>
+      <div class="hint">Enter the code here, on your keyboard, or on the IR remote.</div>
+    </div>
+    <div class="card"><h2>ROOM PROFILE</h2><div id="room"></div></div>
+    <div class="card" id="target"><h2>TARGET</h2><div id="targetBody"></div></div>
+    <div class="card"><h2>EVENT LOG</h2><ul id="log"></ul></div>
+  </div>
+</main>
+
+<div id="modal"><div class="card">
+  <h3>SESSION REPORT</h3>
+  <div id="reportBody"></div>
+  <div class="btns">
+    <button id="rCsv">Download CSV</button>
+    <button id="rShot">Save radar image</button>
+    <button id="rClose" class="primary">Close</button>
+  </div>
+</div></div>
+
+<script>
+"use strict";
+
+// ---------- Constants (must match the Arduino sketch) ----------
+const MIN_A = 10, MAX_A = 170, BIN = 4, NB = Math.floor((MAX_A - MIN_A) / BIN) + 1;
+const COL = { bg: "#020a05", green: "#00ff6e", mid: "#00a64a", dim: "#0b4a24",
+              red: "#ff3b3b", amber: "#ffb800", grey: "#8a968e", text: "#dcffe8" };
+
+let maxRange = 300, mirror = false, voiceOn = true, soundOn = true, feedPaused = false;
+let mode = "offline";                 // "offline" | "serial" | "demo"
+let port = null, reader = null, writer = null, sim = null;
+const enc = new TextEncoder();
+const $ = id => document.getElementById(id);
+
+const S = {
+  state: "OFFLINE", angle: 90, beam: 90, lastA: null, lastDir: 0, sweeps: 0, pin: 0, detections: 0,
+  baseline: new Map(), blips: new Map(), live: new Map(), room: null, target: null,
+  maxSpeed: 0, closest: null, trail: [], beamHist: [], readTimes: [], events: []
+};
+
+function resetView() {
+  Object.assign(S, { state: "OFFLINE", angle: 90, beam: 90, lastA: null, lastDir: 0, sweeps: 0, pin: 0,
+    detections: 0, room: null, target: null, maxSpeed: 0, closest: null, trail: [], beamHist: [], readTimes: [] });
+  S.baseline.clear(); S.blips.clear(); S.live.clear();
+}
+
+// ---------- Log, events, feed ----------
+function logEvent(msg, cls = "") {
+  const li = document.createElement("li");
+  li.textContent = `${new Date().toLocaleTimeString()}  ${msg}`;
+  if (cls) li.className = cls;
+  const ul = $("log");
+  ul.prepend(li);
+  while (ul.children.length > 40) ul.lastChild.remove();
+}
+function record(kind, angle = "", cm = "", width = "", note = "") {
+  S.events.push([new Date().toISOString(), kind, angle, cm, width, note]);
+}
+const feedLines = [];
+let feedDirty = false;
+function feedPush(line) {
+  feedLines.push(line);
+  if (feedLines.length > 200) feedLines.shift();
+  feedDirty = true;
+}
+
+// ---------- Voice + sound ----------
+function say(text) {
+  if (!voiceOn || !("speechSynthesis" in window)) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.rate = 1.05;
+  speechSynthesis.speak(u);
+}
+let actx = null;
+function audioInit() {
+  if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+  if (actx.state === "suspended") actx.resume();
+}
+function ping(big) {
+  if (!soundOn || !actx) return;
+  const t = actx.currentTime, len = big ? 1.1 : 0.45;
+  [0, 0.18].forEach((delay, i) => {          // ping + faint echo
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = "sine";
+    o.frequency.value = big ? 1100 : 1400;
+    const vol = (big ? 0.35 : 0.07) * (i ? 0.35 : 1);
+    g.gain.setValueAtTime(0.0001, t + delay);
+    g.gain.exponentialRampToValueAtTime(vol, t + delay + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + delay + len);
+    o.connect(g).connect(actx.destination);
+    o.start(t + delay);
+    o.stop(t + delay + len + 0.05);
+  });
+}
+
+// ---------- Incoming data ----------
+const NUMERIC = { S: 2, BASE: 3, CALSTATS: 9, D: 3, T: 3, PIN: 1, WRONG: 1, SESSION: 4 };
+function handleLine(line) {
+  feedPush(line);
+  const p = line.split(","), k = p[0], now = performance.now();
+  if (k in NUMERIC) {
+    if (p.length !== NUMERIC[k] + 1 || p.slice(1).some(x => x === "" || isNaN(+x))) return;
+  }
+
+  if (k === "S") {
+    const a = +p[1], cm = +p[2];
+    if (S.lastA !== null && a !== S.lastA) {
+      const d = a - S.lastA;
+      if (S.lastDir && (d > 0) !== (S.lastDir > 0)) {
+        S.sweeps++;
+        if (S.state === "ARMED") ping(false);
+      }
+      S.lastDir = d;
+    }
+    S.lastA = a;
+    S.angle = a;
+    S.readTimes.push(now);
+    S.live.set(a, cm);
+    if (cm > 0) S.blips.set(a, { cm, t: now }); else S.blips.delete(a);
+
+  } else if (k === "BASE") {
+    const a = +p[1], cm = +p[2], thr = +p[3];
+    if (cm > 0) S.baseline.set(a, { cm, thr }); else S.baseline.delete(a);
+
+  } else if (k === "CALSTATS") {
+    const v = p.slice(1).map(Number);
+    S.room = { coverage: v[0], noise: v[1] / 10, maxNoise: v[2], nearA: v[3], nearCm: v[4],
+               farA: v[5], farCm: v[6], sweepMs: v[7], pingHz: v[8] };
+    logEvent(`Room learned: ${v[0]}% coverage, ±${(v[1] / 10).toFixed(1)} cm noise`, "good");
+    record("ROOM", "", "", "", `coverage ${v[0]}%, noise ${(v[1] / 10).toFixed(1)}cm`);
+    say(`Room learned. Coverage ${v[0]} percent. System armed.`);
+
+  } else if (k === "D" || k === "T") {
+    const a = +p[1], cm = +p[2], w = +p[3];
+    updateTarget(k, a, cm, w, now);
+    record(k === "D" ? "DETECT" : "TRACK", a, cm, w);
+    if (k === "D") {
+      S.detections++;
+      logEvent(`OBJECT at ${a}° · ${cm} cm · ~${w} cm wide`, "bad");
+      ping(true);
+      say(`Object detected. Bearing ${a} degrees. Range ${cm} centimeters.`);
+    } else {
+      ping(false);
+    }
+
+  } else if (k === "LOST") {
+    logEvent("Target lost, searching", "warn");
+    record("LOST");
+    say("Target lost.");
+
+  } else if (k === "STATE" && p.length === 2) {
+    onState(p[1]);
+
+  } else if (k === "PIN") {
+    S.pin = +p[1];
+
+  } else if (k === "WRONG") {
+    S.pin = 0;
+    logEvent(`Wrong code (try ${p[1]})`, "warn");
+    record("WRONG_CODE", "", "", "", `try ${p[1]}`);
+    say("Access denied.");
+
+  } else if (k === "SESSION") {
+    const [armedS, sweeps, det, wrong] = p.slice(1).map(Number);
+    record("SESSION", "", "", "", `armed ${armedS}s, ${det} detections, ${wrong} wrong codes`);
+    showReport(armedS, sweeps, det, wrong);
+    say(`Access granted. Session complete. ${det} ${det === 1 ? "detection" : "detections"}.`);
+
+  } else if (k === "READY") {
+    logEvent("Sonar Guard online", "good");
+  }
+}
+
+function onState(s) {
+  const old = S.state;
+  S.state = s;
+  logEvent(`State: ${s}`, s === "ALERT" || s === "ALARM" ? "bad" : (s === "ARMED" ? "good" : ""));
+  record("STATE", "", "", "", s);
+  if (s === "ARMING") {
+    Object.assign(S, { maxSpeed: 0, closest: null, target: null, trail: [], room: null, sweeps: 0, detections: 0 });
+    S.baseline.clear();
+    S.live.clear();
+    hideReport();
+    say("Arming. Clear the area.");
+  } else if (s === "LEARNING") {
+    say("Learning the room.");
+  } else if (s === "ALARM") {
+    say("Intruder alert. Intruder alert.");
+  } else if (s === "DISARMED") {
+    S.pin = 0;
+    if (old === "ARMING" || old === "LEARNING") say("Access granted.");
+  }
+}
+
+function updateTarget(kind, a, cm, width, now) {
+  const r = a * Math.PI / 180, x = cm * Math.cos(r), y = cm * Math.sin(r);
+  if (kind === "D" || !S.target) {
+    S.target = { t0: now, hist: [], path: 0, closest: cm, speed: 0 };
+    S.trail = [];
+  }
+  const tg = S.target;
+  if (tg.hist.length) {
+    const h = tg.hist[tg.hist.length - 1];
+    tg.path += Math.hypot(x - h.x, y - h.y);
+  }
+  tg.hist.push({ t: now, x, y });
+  if (tg.hist.length > 50) tg.hist.shift();
+  Object.assign(tg, { angle: a, cm, width });
+  tg.closest = Math.min(tg.closest, cm);
+  const older = tg.hist.filter(h => now - h.t >= 800);
+  if (older.length) {
+    const h = older[older.length - 1];
+    tg.speed = Math.hypot(x - h.x, y - h.y) / ((now - h.t) / 1000);
+  }
+  S.maxSpeed = Math.max(S.maxSpeed, tg.speed);
+  S.closest = S.closest === null ? cm : Math.min(S.closest, cm);
+  S.trail.push({ a, cm, t: now });
+  if (S.trail.length > 80) S.trail.shift();
+}
+
+function isNew(a, cm) {
+  if (!S.baseline.size || cm <= 0 || cm > 250) return false;
+  const b = S.baseline.get(a);
+  if (!b) return true;
+  return b.cm - cm > b.thr;
+}
+
+function baselineRuns() {
+  const angles = [...S.baseline.keys()].sort((x, y) => x - y);
+  const runs = [];
+  let cur = [];
+  for (const a of angles) {
+    if (cur.length && a - cur[cur.length - 1] > BIN + 1) { runs.push(cur); cur = []; }
+    cur.push(a);
+  }
+  if (cur.length) runs.push(cur);
+  return runs;
+}
+
+// ---------- Report ----------
+function kvHtml(rows) {
+  return rows.map(([k, v]) => `<div class="kv"><span>${k}</span><b>${v}</b></div>`).join("");
+}
+function showReport(armedS, sweeps, det, wrong) {
+  const r = S.room;
+  $("reportBody").innerHTML = kvHtml([
+    ["Armed time", `${Math.floor(armedS / 60)}m ${String(armedS % 60).padStart(2, "0")}s`],
+    ["Sweeps", sweeps],
+    ["Detections", det],
+    ["Wrong codes", wrong],
+    ["Room coverage", r ? `${r.coverage} %` : "–"],
+    ["Sensor noise", r ? `±${r.noise.toFixed(1)} cm` : "–"],
+    ["Closest approach", S.closest !== null ? `${Math.round(S.closest)} cm` : "–"],
+    ["Top target speed", det ? `~${Math.round(S.maxSpeed)} cm/s` : "–"]
+  ]);
+  $("modal").classList.add("show");
+}
+function hideReport() { $("modal").classList.remove("show"); }
+
+// ---------- Canvas setup ----------
+const radar = $("radar"), rctx = radar.getContext("2d");
+const prof = $("profile"), pctx = prof.getContext("2d");
+let RW = 0, RH = 0, CX = 0, CY = 0, RR = 0, PW = 0, PH = 180;
+
+function fit(canvas, ctx, w, h) {
+  const d = window.devicePixelRatio || 1;
+  canvas.style.height = h + "px";
+  canvas.width = Math.round(w * d);
+  canvas.height = Math.round(h * d);
+  ctx.setTransform(d, 0, 0, d, 0, 0);
+}
+function resize() {
+  RW = radar.clientWidth;
+  RH = Math.round(Math.max(260, Math.min(RW * 0.56, window.innerHeight * 0.62)));
+  fit(radar, rctx, RW, RH);
+  CX = RW / 2;
+  CY = RH - 26;
+  RR = Math.max(60, Math.min(RW / 2 - 46, RH - 64));
+  PW = prof.clientWidth;
+  fit(prof, pctx, PW, PH);
+}
+window.addEventListener("resize", resize);
+
+function polar(a, cm, clamp = true) {
+  const c = clamp ? Math.min(Math.max(cm, 0), maxRange) : cm;
+  const r = c / maxRange * RR;
+  const t = (mirror ? 180 - a : a) * Math.PI / 180;
+  return [CX + r * Math.cos(t), CY - r * Math.sin(t)];
+}
+
+// ---------- Radar drawing ----------
+function drawRadar(now) {
+  const c = rctx;
+  c.fillStyle = COL.bg;
+  c.fillRect(0, 0, RW, RH);
+  c.lineWidth = 1;
+  c.font = "12px Consolas, monospace";
+
+  // Range rings + angle spokes
+  for (let rc = 50; rc <= maxRange; rc += 50) {
+    const r = rc / maxRange * RR;
+    c.strokeStyle = COL.dim;
+    c.beginPath(); c.arc(CX, CY, r, Math.PI, 2 * Math.PI); c.stroke();
+    c.fillStyle = COL.mid;
+    c.fillText(`${rc}`, CX + r - 24, CY + 16);
+  }
+  c.textAlign = "center";
+  for (let a = 0; a <= 180; a += 30) {
+    const [x, y] = polar(a, maxRange);
+    c.strokeStyle = COL.dim;
+    c.beginPath(); c.moveTo(CX, CY); c.lineTo(x, y); c.stroke();
+    const [lx, ly] = polar(a, maxRange * 1.08, false);
+    c.fillStyle = COL.mid;
+    c.fillText(`${a}°`, Math.min(RW - 22, Math.max(22, lx)), ly + 4);   // 0° and 180° sit at the edges
+  }
+  c.textAlign = "left";
+  c.strokeStyle = COL.mid;
+  c.beginPath(); c.moveTo(CX - RR, CY); c.lineTo(CX + RR, CY); c.stroke();
+
+  // Learned room outline + detection band
+  for (const run of baselineRuns()) {
+    if (run.length < 2) continue;
+    c.beginPath();
+    run.forEach((a, i) => { const [x, y] = polar(a, S.baseline.get(a).cm); i ? c.lineTo(x, y) : c.moveTo(x, y); });
+    for (let i = run.length - 1; i >= 0; i--) {
+      const b = S.baseline.get(run[i]);
+      const [x, y] = polar(run[i], Math.max(b.cm - b.thr, 0));
+      c.lineTo(x, y);
+    }
+    c.closePath();
+    c.fillStyle = "rgba(0,255,110,0.09)";
+    c.fill();
+    c.beginPath();
+    run.forEach((a, i) => { const [x, y] = polar(a, S.baseline.get(a).cm); i ? c.lineTo(x, y) : c.moveTo(x, y); });
+    c.strokeStyle = COL.mid;
+    c.lineWidth = 2;
+    c.stroke();
+    c.lineWidth = 1;
+  }
+
+  // Sweep beam with fading trail
+  const h = S.beamHist;
+  for (let i = 1; i < h.length; i++) {
+    const a0 = h[i - 1].a, a1 = h[i].a;
+    if (Math.abs(a1 - a0) < 0.05) continue;
+    const alpha = 0.28 * (1 - (now - h[i].t) / 1200);
+    if (alpha <= 0) continue;
+    const [x0, y0] = polar(a0, maxRange), [x1, y1] = polar(a1, maxRange);
+    c.beginPath(); c.moveTo(CX, CY); c.lineTo(x0, y0); c.lineTo(x1, y1); c.closePath();
+    c.fillStyle = `rgba(0,255,110,${alpha})`;
+    c.fill();
+  }
+  const alert = S.state === "ALERT" || S.state === "ALARM";
+  const [bx, by] = polar(S.beam, maxRange);
+  c.strokeStyle = alert ? COL.red : COL.green;
+  c.lineWidth = 2;
+  c.beginPath(); c.moveTo(CX, CY); c.lineTo(bx, by); c.stroke();
+  c.lineWidth = 1;
+
+  // Blips
+  for (const [a, b] of S.blips) {
+    const age = now - b.t;
+    if (age > 6000) { S.blips.delete(a); continue; }
+    const alpha = 1 - age / 6000;
+    const rgb = isNew(a, b.cm) ? "255,59,59" : (S.state === "LEARNING" ? "255,184,0" : "0,255,110");
+    const [x, y] = polar(a, b.cm);
+    c.fillStyle = `rgba(${rgb},${alpha})`;
+    c.beginPath(); c.arc(x, y, 4.5, 0, 2 * Math.PI); c.fill();
+  }
+
+  // Target trail + lock-on
+  for (const pt of S.trail) {
+    const age = now - pt.t;
+    if (age > 30000) continue;
+    const [x, y] = polar(pt.a, pt.cm);
+    c.fillStyle = `rgba(255,59,59,${Math.max(0.25, 1 - age / 30000)})`;
+    c.beginPath(); c.arc(x, y, 3, 0, 2 * Math.PI); c.fill();
+  }
+  if (S.target && alert) {
+    const tg = S.target;
+    const [x, y] = polar(tg.angle, tg.cm);
+    const pulse = 14 + 6 * Math.sin(now / 1000 * 8);
+    c.strokeStyle = COL.red;
+    c.lineWidth = 2;
+    c.beginPath(); c.arc(x, y, pulse, 0, 2 * Math.PI); c.stroke();
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      c.beginPath(); c.moveTo(x + dx * 8, y + dy * 8); c.lineTo(x + dx * 26, y + dy * 26); c.stroke();
+    }
+    c.lineWidth = 1;
+    c.fillStyle = COL.red;
+    c.font = "14px Consolas, monospace";
+    const right = x > RW - 280;
+    c.textAlign = right ? "right" : "left";
+    const lx = right ? x - 32 : x + 32;
+    c.fillText(`TARGET ${tg.angle}°  ${Math.round(tg.cm)} cm`, lx, y - 26);
+    c.fillText(`~${Math.round(tg.width)} cm wide  ~${Math.round(tg.speed)} cm/s`, lx, y - 8);
+    c.textAlign = "left";
+  }
+
+  // Alert banner + flashing border
+  if (alert) {
+    const flash = Math.floor(now / 333) % 2 === 0;
+    if (flash) {
+      c.strokeStyle = COL.red;
+      c.lineWidth = 4;
+      c.strokeRect(3, 3, RW - 6, RH - 6);
+      c.lineWidth = 1;
+    }
+    if (flash || S.state === "ALERT") {
+      c.fillStyle = COL.red;
+      c.font = `bold ${Math.max(20, Math.round(RW / 26))}px Consolas, monospace`;
+      c.textAlign = "center";
+      c.fillText(S.state === "ALARM" ? "!! INTRUDER !!" : "OBJECT DETECTED", CX, 44);
+      c.textAlign = "left";
+    }
+  }
+  if (S.state === "OFFLINE") {
+    c.fillStyle = COL.grey;
+    c.font = "16px Consolas, monospace";
+    c.textAlign = "center";
+    c.fillText("Connect the Arduino or start Demo mode", CX, CY - RR * 0.45);
+    c.textAlign = "left";
+  }
+}
+
+// ---------- Range profile chart ----------
+function drawProfile() {
+  const c = pctx, w = PW, h = PH;
+  c.fillStyle = COL.bg;
+  c.fillRect(0, 0, w, h);
+  const L = 36, R = 8, T = 8, B = 22, pw = w - L - R, ph = h - T - B;
+  const X = a => {
+    const f = (a - MIN_A) / (MAX_A - MIN_A);
+    return L + (mirror ? f : 1 - f) * pw;       // matches the radar's left/right
+  };
+  const Y = cm => T + ph - Math.min(Math.max(cm, 0), maxRange) / maxRange * ph;
+
+  c.font = "10px Consolas, monospace";
+  c.lineWidth = 1;
+  for (let cm = 0; cm <= maxRange; cm += 100) {
+    const y = Y(cm);
+    c.strokeStyle = COL.dim;
+    c.beginPath(); c.moveTo(L, y); c.lineTo(w - R, y); c.stroke();
+    c.fillStyle = COL.mid;
+    c.fillText(`${cm}`, 4, y + 3);
+  }
+  for (let a = 30; a <= 150; a += 30) {
+    const x = X(a);
+    c.strokeStyle = COL.dim;
+    c.beginPath(); c.moveTo(x, T); c.lineTo(x, T + ph); c.stroke();
+    c.fillStyle = COL.mid;
+    c.fillText(`${a}°`, x - 9, h - 6);
+  }
+
+  for (const run of baselineRuns()) {
+    if (run.length < 2) continue;
+    c.beginPath();
+    run.forEach((a, i) => { const b = S.baseline.get(a); i ? c.lineTo(X(a), Y(b.cm)) : c.moveTo(X(a), Y(b.cm)); });
+    for (let i = run.length - 1; i >= 0; i--) {
+      const b = S.baseline.get(run[i]);
+      c.lineTo(X(run[i]), Y(Math.max(b.cm - b.thr, 0)));
+    }
+    c.closePath();
+    c.fillStyle = "rgba(0,255,110,0.12)";
+    c.fill();
+    c.beginPath();
+    run.forEach((a, i) => { const b = S.baseline.get(a); i ? c.lineTo(X(a), Y(b.cm)) : c.moveTo(X(a), Y(b.cm)); });
+    c.strokeStyle = COL.mid;
+    c.lineWidth = 1.5;
+    c.stroke();
+    c.lineWidth = 1;
+  }
+
+  for (const [a, cm] of S.live) {
+    if (cm <= 0) continue;
+    c.fillStyle = isNew(a, cm) ? COL.red : COL.green;
+    c.beginPath(); c.arc(X(a), Y(cm), 2.6, 0, 2 * Math.PI); c.fill();
+  }
+  c.strokeStyle = "rgba(0,255,110,0.5)";
+  c.beginPath(); c.moveTo(X(S.beam), T); c.lineTo(X(S.beam), T + ph); c.stroke();
+}
+
+// ---------- Side panels ----------
+function updatePanels(now) {
+  const st = $("state");
+  st.textContent = S.state;
+  st.className = { ARMED: "armed", ARMING: "warn", LEARNING: "warn", ALERT: "alert", ALARM: "alarm" }[S.state] || "";
+  $("statusCard").classList.toggle("alertmode", S.state === "ALERT" || S.state === "ALARM");
+  [...$("dots").children].forEach((d, i) => d.classList.toggle("on", i < S.pin));
+
+  const r = S.room;
+  const rows = r ? [
+    ["Coverage", `${r.coverage} %`],
+    ["Sensor noise", `±${r.noise.toFixed(1)} cm`],
+    ["Nearest", `${r.nearCm} cm @ ${r.nearA}°`],
+    ["Farthest", `${r.farCm} cm @ ${r.farA}°`],
+    ["Sweep time", `${(r.sweepMs / 1000).toFixed(1)} s`],
+    ["Ping rate", `${r.pingHz} /s`]
+  ] : [["Not learned yet", ""]];
+  rows.push(["Readings", `${(S.readTimes.length / 2).toFixed(0)} /s`], ["Sweeps", S.sweeps], ["Detections", S.detections]);
+  $("room").innerHTML = kvHtml(rows);
+
+  const tg = (S.state === "ALERT" || S.state === "ALARM") ? S.target : null;
+  $("targetBody").innerHTML = tg ? kvHtml([
+    ["Bearing", `${tg.angle}°`],
+    ["Range", `${Math.round(tg.cm)} cm`],
+    ["Apparent width", `~${Math.round(tg.width)} cm`],
+    ["Speed", `~${Math.round(tg.speed)} cm/s`],
+    ["Closest", `${Math.round(tg.closest)} cm`],
+    ["Distance moved", `${Math.round(tg.path)} cm`],
+    ["Tracked", `${Math.round((now - tg.t0) / 1000)} s`]
+  ]) : kvHtml([["No target", ""]]);
+
+  if (feedDirty && !feedPaused) {
+    const f = $("feed");
+    f.textContent = feedLines.join("\n");
+    f.scrollTop = f.scrollHeight;
+    feedDirty = false;
+  }
+}
+
+// ---------- USB serial (Chrome / Edge) ----------
+function setConn(text, cls) {
+  $("conn").textContent = text;
+  $("conn").className = cls;
+}
+async function connectSerial() {
+  if (!("serial" in navigator)) return;
+  audioInit();
+  if (mode === "serial") return;
+  try {
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 115200 });
+    sim = null;
+    resetView();
+    writer = port.writable.getWriter();
+    mode = "serial";
+    setConn("connected", "on");
+    readLoop();
+  } catch (e) {
+    logEvent(`Connection failed: ${e.message}. Is the Arduino Serial Monitor closed?`, "bad");
+  }
+}
+async function readLoop() {
+  const decoder = new TextDecoder();
+  let buf = "";
+  try {
+    reader = port.readable.getReader();
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let i;
+      while ((i = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, i).trim();
+        buf = buf.slice(i + 1);
+        if (line) handleLine(line);
+      }
+    }
+  } catch (e) {
+    logEvent("Arduino disconnected", "bad");
+  } finally {
+    try { reader.releaseLock(); } catch (_) {}
+    mode = "offline";
+    writer = null;
+    setConn("offline", "");
+  }
+}
+function send(text) {
+  if (mode === "demo" && sim) sim.input(text);
+  else if (mode === "serial" && writer) writer.write(enc.encode(text)).catch(() => {});
+}
+
+// ---------- Demo simulator: a virtual room + intruder, speaking the same protocol ----------
+const ROOM_SEGS = [
+  [-180, 0, -180, 260], [-180, 260, 220, 260], [220, 260, 220, 0],             // walls
+  [80, 120, 150, 120], [150, 120, 150, 170], [150, 170, 80, 170], [80, 170, 80, 120] // desk
+];
+const ROOM_CIRCLES = [{ x: -95, y: 150, r: 18 }];                               // chair
+const INTRUDER_PATH = [[-200, 205], [-60, 190], [10, 120], [50, 80], [-20, 95], [40, 140]];
+
+function raySeg(dx, dy, s) {
+  const [x1, y1, x2, y2] = s, ex = x2 - x1, ey = y2 - y1;
+  const den = ex * dy - dx * ey;
+  if (Math.abs(den) < 1e-9) return Infinity;
+  const t = (ex * y1 - x1 * ey) / den, u = (dx * y1 - dy * x1) / den;
+  return (t > 0 && u >= 0 && u <= 1) ? t : Infinity;
+}
+function rayCircle(dx, dy, c) {
+  const b = dx * c.x + dy * c.y, disc = b * b - (c.x * c.x + c.y * c.y - c.r * c.r);
+  if (disc < 0) return Infinity;
+  const t = b - Math.sqrt(disc);
+  return t > 0 ? t : Infinity;
+}
+function noise() { return (Math.random() + Math.random() + Math.random() - 1.5) * 1.4; }
+
+class Sim {
+  constructor(emit) {
+    this.emit = emit;
+    Object.assign(this, { state: "DISARMED", cmd: 90, dir: 1, lo: MIN_A, hi: MAX_A, tick: 22, sweeping: false,
+      nextServo: 0, sweepCount: 0, sessionSweeps: 0, curBin: -1, samples: [], lastFinal: -1,
+      pin: "", wrong: 0, wrongTotal: 0, detections: 0, armedAt: 0, intruder: null, intruderAt: 0,
+      lastUpdate: 0, pings: 0, lastSweepMs: 0 });
+    this.val = new Array(NB).fill(-1);
+    this.stamp = new Array(NB).fill(-99);
+    this.anom = new Array(NB).fill(false);
+    this.base = new Array(NB).fill(-1);
+    this.noise = new Array(NB).fill(0);
+  }
+  start(now) { this.lastUpdate = now; this.emit("READY"); this.setState("DISARMED"); }
+  setState(s) { this.state = s; this.emit("STATE," + s); }
+  binFor(a) { return Math.max(0, Math.min(NB - 1, Math.floor((a - MIN_A + BIN / 2) / BIN))); }
+  binAngle(b) { return MIN_A + b * BIN; }
+
+  measure(angle) {
+    if (Math.random() < 0.03) return -1;                 // occasional missed echo
+    let best = Infinity;
+    for (const off of [-7, -3.5, 0, 3.5, 7]) {           // the real beam is ~15 degrees wide
+      const r = (angle + off) * Math.PI / 180, dx = Math.cos(r), dy = Math.sin(r);
+      for (const s of ROOM_SEGS) best = Math.min(best, raySeg(dx, dy, s));
+      for (const c of ROOM_CIRCLES) best = Math.min(best, rayCircle(dx, dy, c));
+      if (this.intruder) best = Math.min(best, rayCircle(dx, dy, this.intruder));
+    }
+    if (!isFinite(best) || best > 400) return -1;
+    return Math.round(best + noise());
+  }
+
+  input(ch) {
+    if (ch === "A") { if (this.state === "DISARMED") this.startArming(); return; }
+    if (ch === "<") {
+      if (this.pin.length) { this.pin = this.pin.slice(0, -1); this.emit("PIN," + this.pin.length); }
+      return;
+    }
+    if (!/^[0-9]$/.test(ch) || this.state === "DISARMED") return;
+    this.pin += ch;
+    this.emit("PIN," + this.pin.length);
+    if (this.pin.length === 4) {
+      if (this.pin === "1234") return this.disarm();
+      this.pin = "";
+      this.wrong++;
+      this.wrongTotal++;
+      this.emit("WRONG," + this.wrong);
+      if (this.wrong >= 3 && this.state !== "ALARM") this.setState("ALARM");
+    }
+  }
+
+  startArming() {
+    Object.assign(this, { pin: "", wrong: 0, wrongTotal: 0, detections: 0, sessionSweeps: 0, armedAt: 0,
+      sweeping: false, cmd: MIN_A, dir: 1, intruder: null, intruderAt: 0 });
+    this.armAt = performance.now() + 5000;
+    this.setState("ARMING");
+  }
+
+  startLearning(now) {
+    this.cal = Array.from({ length: 4 }, () => new Array(NB).fill(-2));
+    Object.assign(this, { calSweep: 0, lo: MIN_A, hi: MAX_A, tick: 22, curBin: -1, samples: [], lastFinal: -1,
+      sweeping: true, nextServo: now, learnStart: now, sweepStart: now, pings0: this.pings });
+    this.setState("LEARNING");
+  }
+
+  update(now) {
+    const dt = Math.min(0.1, (now - this.lastUpdate) / 1000);
+    this.lastUpdate = now;
+    if (this.state === "ARMING" && now >= this.armAt) this.startLearning(now);
+    if (this.intruderAt && !this.intruder && now >= this.intruderAt) {
+      this.intruder = { x: INTRUDER_PATH[0][0], y: INTRUDER_PATH[0][1], r: 22, i: 1 };
+    }
+    if (this.intruder) this.walk(dt);
+    if (this.state === "ALERT" && now >= this.deadline) this.setState("ALARM");
+    if (!this.sweeping) return;
+    if (now - this.nextServo > 500) this.nextServo = now;   // tab was in the background
+    while (now >= this.nextServo) {
+      this.nextServo += this.tick;
+      this.servoStep();
+    }
+  }
+
+  walk(dt) {
+    const p = this.intruder, [tx, ty] = INTRUDER_PATH[p.i];
+    const d = Math.hypot(tx - p.x, ty - p.y), step = 45 * dt;
+    if (d <= step) {
+      p.x = tx; p.y = ty;
+      p.i = p.i + 1 < INTRUDER_PATH.length ? p.i + 1 : 3;
+    } else {
+      p.x += (tx - p.x) / d * step;
+      p.y += (ty - p.y) / d * step;
+    }
+  }
+
+  servoStep() {
+    if (this.cmd > this.hi) { this.dir = -1; this.cmd--; }
+    else if (this.cmd < this.lo) { this.dir = 1; this.cmd++; }
+    else {
+      let next = this.cmd + this.dir;
+      if (next > this.hi || next < this.lo) {
+        this.sweepEnd();
+        if (!this.sweeping) return;
+        if (this.cmd < this.lo) this.dir = 1;
+        else if (this.cmd > this.hi) this.dir = -1;
+        else this.dir = -this.dir;
+        next = this.cmd + this.dir;
+      }
+      this.cmd = next;
+    }
+    this.reading(this.cmd, this.measure(this.cmd));
+  }
+
+  reading(angle, cm) {
+    this.pings++;
+    const b = this.binFor(angle);
+    if (b !== this.curBin) {
+      if (this.curBin >= 0) this.finalize(this.curBin);
+      this.curBin = b;
+      this.samples = [];
+    }
+    if (this.samples.length < 6) this.samples.push(cm);
+  }
+
+  thr(b) { return this.base[b] < 0 ? 0 : Math.max(20, 3 * this.noise[b], Math.floor(this.base[b] / 10)); }
+  isAnom(b, v) {
+    if (v < 0 || v > 250) return false;
+    if (this.base[b] < 0) return true;
+    return this.base[b] - v > this.thr(b);
+  }
+  cluster(f, l) {
+    let cm = Infinity;
+    for (let b = f; b <= l; b++) if (this.val[b] >= 0) cm = Math.min(cm, this.val[b]);
+    if (!isFinite(cm)) cm = 0;
+    const angle = Math.round((this.binAngle(f) + this.binAngle(l)) / 2), span = (l - f + 1) * BIN;
+    return [angle, cm, Math.round(2 * cm * Math.tan(span / 2 * Math.PI / 180))];
+  }
+
+  finalize(b) {
+    if (!this.samples.length) return;
+    const s = [...this.samples].sort((x, y) => x - y), v = s[Math.floor(s.length / 2)];
+    this.val[b] = v;
+    this.stamp[b] = this.sweepCount;
+    this.emit(`S,${this.binAngle(b)},${v}`);
+    if (this.state === "LEARNING") {
+      if (this.calSweep < 4) this.cal[this.calSweep][b] = v;
+    } else if (["ARMED", "ALERT", "ALARM"].includes(this.state)) {
+      this.anom[b] = this.isAnom(b, v);
+      const lf = this.lastFinal;
+      if (this.state === "ARMED" && this.anom[b] && lf >= 0 && Math.abs(lf - b) === 1 &&
+          this.anom[lf] && this.stamp[lf] === this.sweepCount) {
+        let f = b, l = b;
+        while (f > 0 && this.anom[f - 1] && this.stamp[f - 1] === this.sweepCount) f--;
+        while (l < NB - 1 && this.anom[l + 1] && this.stamp[l + 1] === this.sweepCount) l++;
+        this.lastFinal = b;
+        this.alert(...this.cluster(f, l));
+        return;
+      }
+    }
+    this.lastFinal = b;
+  }
+
+  sweepEnd() {
+    if (this.curBin >= 0) { this.finalize(this.curBin); this.curBin = -1; this.samples = []; }
+    const now = performance.now();
+    this.lastSweepMs = Math.round(now - this.sweepStart);
+    this.sweepStart = now;
+    if (this.state === "LEARNING") {
+      if (++this.calSweep >= 4) this.finishLearning(now);
+    } else if (this.state === "ALERT" || this.state === "ALARM") {
+      this.evalTrack();
+    }
+    if (["ARMED", "ALERT", "ALARM"].includes(this.state)) this.sessionSweeps++;
+    this.sweepCount++;
+    this.lastFinal = -1;
+  }
+
+  finishLearning(now) {
+    let covered = 0, noiseSum = 0, maxNoise = 0, nearB = -1, farB = -1;
+    for (let b = 0; b < NB; b++) {
+      const meas = this.cal.map(row => row[b]).filter(v => v !== -2);
+      const vals = meas.filter(v => v >= 0).sort((x, y) => x - y);
+      if (!meas.length || vals.length * 2 < meas.length) {
+        this.base[b] = -1;
+        this.noise[b] = 0;
+      } else {
+        this.base[b] = vals[Math.floor(vals.length / 2)];
+        this.noise[b] = Math.min(255, Math.floor((vals[vals.length - 1] - vals[0] + 1) / 2));
+        covered++;
+        noiseSum += this.noise[b];
+        maxNoise = Math.max(maxNoise, this.noise[b]);
+        if (nearB < 0 || this.base[b] < this.base[nearB]) nearB = b;
+        if (farB < 0 || this.base[b] > this.base[farB]) farB = b;
+      }
+      this.anom[b] = false;
+      this.emit(`BASE,${this.binAngle(b)},${this.base[b]},${this.thr(b)}`);
+    }
+    const cov = Math.floor(covered * 100 / NB), avg10 = covered ? Math.floor(noiseSum * 10 / covered) : 0;
+    const hz = Math.round((this.pings - this.pings0) * 1000 / Math.max(1, now - this.learnStart));
+    const nA = nearB >= 0 ? this.binAngle(nearB) : 0, nC = nearB >= 0 ? this.base[nearB] : 0;
+    const fA = farB >= 0 ? this.binAngle(farB) : 0, fC = farB >= 0 ? this.base[farB] : 0;
+    this.emit(`CALSTATS,${cov},${avg10},${maxNoise},${nA},${nC},${fA},${fC},${this.lastSweepMs},${hz}`);
+    this.armedAt = now;
+    this.setState("ARMED");
+    this.intruderAt = now + 6000;                        // someone walks in a few seconds later
+  }
+
+  alert(a, cm, w) {
+    this.detections++;
+    Object.assign(this, { ta: a, tcm: cm, tw: w, pin: "", lost: 0 });
+    this.deadline = performance.now() + 20000;
+    this.setState("ALERT");
+    this.emit(`D,${a},${cm},${w}`);
+    this.trackWindow();
+  }
+  trackWindow() {
+    this.lo = Math.max(MIN_A, this.ta - 30);
+    this.hi = Math.min(MAX_A, this.ta + 30);
+    this.tick = 18;
+  }
+  evalTrack() {
+    const bLo = this.binFor(this.lo), bHi = this.binFor(this.hi);
+    let best = null, bestD = Infinity;
+    for (let b = bLo; b <= bHi; b++) {
+      if (this.anom[b] && this.stamp[b] === this.sweepCount) {
+        const f = b;
+        while (b + 1 <= bHi && this.anom[b + 1] && this.stamp[b + 1] === this.sweepCount) b++;
+        const center = Math.round((this.binAngle(f) + this.binAngle(b)) / 2), d = Math.abs(center - this.ta);
+        if (d < bestD) { bestD = d; best = [f, b]; }
+      }
+    }
+    if (best) {
+      [this.ta, this.tcm, this.tw] = this.cluster(best[0], best[1]);
+      this.lost = 0;
+      this.emit(`T,${this.ta},${this.tcm},${this.tw}`);
+      this.trackWindow();
+    } else if (++this.lost === 3) {
+      this.emit("LOST");
+      this.lo = MIN_A;
+      this.hi = MAX_A;
+      this.tick = 22;
+    }
+  }
+
+  disarm() {
+    const armedS = this.armedAt ? Math.floor((performance.now() - this.armedAt) / 1000) : 0;
+    this.emit(`SESSION,${armedS},${this.sessionSweeps},${this.detections},${this.wrongTotal}`);
+    Object.assign(this, { sweeping: false, lo: MIN_A, hi: MAX_A, tick: 22, curBin: -1, cmd: 90,
+      pin: "", wrong: 0, intruder: null, intruderAt: 0 });
+    this.setState("DISARMED");
+  }
+}
+
+function startDemo() {
+  audioInit();
+  if (mode === "serial") {
+    logEvent("Arduino is connected. Reload the page to use Demo mode.", "warn");
+    return;
+  }
+  resetView();
+  sim = new Sim(handleLine);
+  mode = "demo";
+  setConn("demo mode", "demo");
+  sim.start(performance.now());
+  logEvent("Demo: press Arm, then enter 1234 once it catches the intruder", "warn");
+}
+
+// ---------- Downloads ----------
+function stamp() {
+  const d = new Date(), z = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}_${z(d.getHours())}${z(d.getMinutes())}${z(d.getSeconds())}`;
+}
+function download(name, href) {
+  const a = document.createElement("a");
+  a.download = name;
+  a.href = href;
+  a.click();
+}
+function saveImage() { download(`radar_${stamp()}.png`, radar.toDataURL("image/png")); }
+function saveCsv() {
+  const rows = [["time", "event", "angle_deg", "range_cm", "width_cm", "note"], ...S.events];
+  const text = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+  const url = URL.createObjectURL(new Blob([text], { type: "text/csv" }));
+  download(`sonar_guard_session_${stamp()}.csv`, url);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// ---------- Controls ----------
+const pad = $("keypad");
+["1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "ARM"].forEach(k => {
+  const b = document.createElement("button");
+  b.textContent = k;
+  b.onclick = () => { audioInit(); send(k === "⌫" ? "<" : k === "ARM" ? "A" : k); };
+  pad.appendChild(b);
+});
+
+$("btnConnect").onclick = connectSerial;
+$("btnDemo").onclick = startDemo;
+$("btnArm").onclick = () => { audioInit(); send("A"); };
+$("range").onchange = e => { maxRange = +e.target.value; };
+$("btnMirror").onclick = e => {
+  mirror = !mirror;
+  e.target.textContent = `Mirror: ${mirror ? "on" : "off"}`;
+  e.target.classList.toggle("off", !mirror);
+};
+$("btnVoice").onclick = e => {
+  voiceOn = !voiceOn;
+  e.target.textContent = `Voice: ${voiceOn ? "on" : "off"}`;
+  e.target.classList.toggle("off", !voiceOn);
+  if (!voiceOn && "speechSynthesis" in window) speechSynthesis.cancel();
+};
+$("btnSound").onclick = e => {
+  audioInit();
+  soundOn = !soundOn;
+  e.target.textContent = `Sound: ${soundOn ? "on" : "off"}`;
+  e.target.classList.toggle("off", !soundOn);
+};
+$("btnShot").onclick = saveImage;
+$("btnCsv").onclick = saveCsv;
+$("btnPause").onclick = e => {
+  feedPaused = !feedPaused;
+  e.target.textContent = feedPaused ? "resume" : "pause";
+  feedDirty = true;
+};
+$("rCsv").onclick = saveCsv;
+$("rShot").onclick = saveImage;
+$("rClose").onclick = hideReport;
+
+document.addEventListener("keydown", e => {
+  if (e.target.tagName === "SELECT" || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (/^[0-9]$/.test(e.key)) { audioInit(); send(e.key); }
+  else if (e.key === "Backspace") { e.preventDefault(); send("<"); }
+  else if (e.key === "a" || e.key === "A") { audioInit(); send("A"); }
+  else if (e.key === "Escape") hideReport();
+});
+
+if (!("serial" in navigator)) {
+  $("nosupport").style.display = "block";
+  $("btnConnect").disabled = true;
+}
+
+// ---------- Main loop ----------
+let lastFrame = performance.now(), lastPanel = 0;
+function frame(now) {
+  const dt = Math.max(0, (now - lastFrame) / 1000);
+  lastFrame = now;
+  if (sim) sim.update(now);
+  while (S.readTimes.length && now - S.readTimes[0] > 2000) S.readTimes.shift();
+  S.beam += (S.angle - S.beam) * Math.min(1, dt * 10);          // smooth beam motion
+  S.beamHist.push({ t: now, a: S.beam });
+  while (S.beamHist.length && now - S.beamHist[0].t > 1200) S.beamHist.shift();
+  drawRadar(now);
+  drawProfile();
+  if (now - lastPanel > 200) { lastPanel = now; updatePanels(now); }
+  requestAnimationFrame(frame);
+}
+// ?demo in the URL starts the simulator straight away (used by the hosted demo)
+if (new URLSearchParams(location.search).has("demo")) startDemo();
+
+resize();
+updatePanels(performance.now());
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
