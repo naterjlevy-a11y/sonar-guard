@@ -3,9 +3,11 @@
 An ultrasonic turret on an Arduino UNO that learns what a room normally looks like, then sweeps it, flags anything new, follows it, and asks for a 4-digit code before the siren goes off.
 
 <p>
-  <img src="media/turret.jpg" alt="The Sonar Guard turret with its LCD and the live dashboard" width="38%">
-  <img src="media/dash-alert.jpg" alt="The dashboard locked onto a simulated person" width="60%">
+  <img src="media/demo.gif" alt="Sonar Guard detecting a hand and locking on" width="40%">
+  <img src="media/turret.jpg" alt="The Sonar Guard turret with its LCD and the live dashboard" width="40%">
 </p>
+
+Full demo with sound: [media/demo.mp4](media/demo.mp4)
 
 An HC-SR04 sensor on an SG90 servo sweeps back and forth across 160°. The first four sweeps learn where the walls and furniture are, slice by slice. After that, every sweep is compared against what it learned, and anything that shows up closer than normal in two neighboring slices sets off an alert. A single-page dashboard shows the live radar over USB, and it has a Demo mode that simulates a room and an intruder, so you can try it without any hardware.
 
