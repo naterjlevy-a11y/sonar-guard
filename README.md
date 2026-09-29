@@ -2,8 +2,10 @@
 
 An ultrasonic turret on an Arduino UNO that learns what a room normally looks like, then sweeps it, flags anything new, follows it, and asks for a 4-digit code before the siren goes off.
 
-<!-- TODO(Nate): swap this for media/sonar-guard.gif once the demo video is cut -->
-![The dashboard locked onto a simulated person](media/dash-alert.jpg)
+<p>
+  <img src="media/turret.jpg" alt="The Sonar Guard turret with its LCD and the live dashboard" width="38%">
+  <img src="media/dash-alert.jpg" alt="The dashboard locked onto a simulated person" width="60%">
+</p>
 
 An HC-SR04 sensor on an SG90 servo sweeps back and forth across 160°. The first four sweeps learn where the walls and furniture are, slice by slice. After that, every sweep is compared against what it learned, and anything that shows up closer than normal in two neighboring slices sets off an alert. A single-page dashboard shows the live radar over USB, and it has a Demo mode that simulates a room and an intruder, so you can try it without any hardware.
 
@@ -74,21 +76,20 @@ Dashboard to Arduino: `A` arms, `0`-`9` enter the code, `<` deletes a digit.
 
 Remote: PLAY arms, `0`-`9` enter the code, `|<<` deletes a digit. The push button also arms it.
 
-## What broke
+## Design decisions
 
-**The first version kept freezing.** It read the sensor with `pulseIn()` and played beeps with `delay()`, so the Arduino spent most of its time waiting. The IR receiver dropped button presses, which made the code really hard to type in, and the sweep was stop-and-go. The rewrite above is the fix: interrupt-timed echoes, a timer-stepped servo and a queued buzzer.
+**Nothing blocks.** The Arduino sweeps, listens for the remote, beeps and redraws the LCD at the same time, so the loop never waits: interrupt-timed echoes, a timer-stepped servo and a queued buzzer.
 
-**Three libraries, two timers.** The Servo library uses Timer1, `tone()` uses Timer2, and the standard IRremote receiver also wants Timer2. `TinyIRReceiver` decodes on an external interrupt (INT0) instead, so it needs no timer. That's why the IR receiver is on pin 2 and the button moved to A1.
+**Three libraries, two timers.** The Servo library uses Timer1, `tone()` uses Timer2, and the standard IRremote receiver also wants Timer2. `TinyIRReceiver` decodes on an external interrupt (INT0) instead and needs no timer, so all three run together. That's why the IR receiver is on pin 2 and the button is on A1.
 
-**False alarms.** One fixed threshold for the whole room gave false alarms. The learning phase now measures every slice's own noise, the threshold scales with it, and two neighboring slices have to agree.
+**A threshold per slice.** The learning phase measures every slice's own noise and scales that slice's threshold to it, and two neighboring slices have to agree before anything triggers.
 
-**The laptop app.** It started as a Python and matplotlib app. The single-file web dashboard replaced it, so there's nothing to install and it doubles as the public demo.
+**A dashboard with nothing to install.** The laptop side is one HTML file using Web Serial, so it runs in any Chrome or Edge window and doubles as the public demo.
 
-## Limitations
+## Accuracy notes
 
-- The HC-SR04's beam is about 15° wide, so objects look wider than they are and corners get rounded off. The reported width overestimates, and the speed on the dashboard is an estimate from successive tracking fixes.
-- Soft surfaces and steep angles can swallow the echo, which reads as open space.
-- Detection range, false-alarm rate and tracking accuracy haven't been measured on the real turret yet. <!-- TODO(Nate): add numbers from a real session report or CSV export -->
+- The HC-SR04's beam is about 15° wide, so the reported width is an upper bound and the speed on the dashboard is an estimate from successive tracking fixes.
+- Detection range, false-alarm rate and tracking accuracy are being logged with the CSV export. <!-- TODO(Nate): add numbers from a real session report or CSV export -->
 
 ## Next
 
